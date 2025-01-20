@@ -11,7 +11,7 @@
 #define OLED_RESET     -1     // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C   //< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 #define DHTPIN 4
-#define DHTTYPE DHT11         //DHT11 // DHT21
+#define DHTTYPE DHT22         //DHT11 // DHT21
 #define PID_COOLANT_TEMP "0105"
 #define m5Name "PandaBT"
 
@@ -25,15 +25,25 @@ bool sendAndReadCommand(const char* cmd, String& response, int delayTime);
 void sendOBDCommand(const char* cmd);
 void writeToCircularBuffer(char c);
 void handleOBDResponse();
+
+//float parseOBDVoltage(const String& response);
+
 String readFromCircularBuffer(int numChars);
 String bufferSerialData(int timeout, int numChars);
 void parseOBDData(const String& response);
 float parseCoolantTemp(const String& response);
 
 //uint8_t BLEAddress[6] = {0x00, 0x10, 0xCC, 0x4F, 0x36, 0x03};  // Indirizzo Bluetooth del modulo ELM327 
+
 uint8_t BLEAddress[6] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};  // Indirizzo Bluetooth del modulo ELM327 box piccolo
+
+//float obdVoltage = 0.0;
+
 uint16_t coolantTemp = 0;
 uint16_t lastCoolantTemp = -999; 
+
+//const unsigned long voltageQueryInterval = 1000; // Intervallo di 4 secondi
+//unsigned long lastVoltageQueryTime = 0;
 
 unsigned long lastOBDQueryTime = 0;
 unsigned long OBDQueryInterval = 150; // Intervallo di query OBD in millisecondi
@@ -63,11 +73,13 @@ void setup() {
 }
 
 void loop() {
-  delay(500);
+  delay(1500);
   uint16_t hh = dht.getHumidity();
   uint16_t tt = dht.getTemperature();
   sendOBDCommand(PID_COOLANT_TEMP);
-  handleOBDResponse();
+  delay(30);
+  //sendOBDCommand("ATRV");
+  //handleOBDResponse();
   /*
   Serial.print(F("Humidity: "));
   Serial.print(hh);
@@ -75,15 +87,19 @@ void loop() {
   Serial.print(tt);
   */
   display.clearDisplay();
+  
   //display.drawLine(0 ,64, 0 , 0, SSD1306_WHITE);
   display.setCursor(0,0);
-  display.println("---Temp---");
+  //display.print("Volt:");
+  //display.println(obdVoltage);
   display.print("Acqua:");
   display.print(coolantTemp);
   display.println("C");
+  display.setCursor(0,23);
   display.print("Ext:  ");
   display.print(tt);
-  display.println("C");
+  display.print("C");
+  display.setCursor(0,46);
   display.print("Hum:  ");
   display.print(hh);
   display.print("%");
@@ -173,27 +189,9 @@ String bufferSerialData(int timeout, int numChars) {
     return readFromCircularBuffer(numChars);
 }
 
-void dataRequestOBD() {
-  static unsigned long lastCommandTime = 0;
-  static int commandIndex = 0;
-  unsigned long currentMillis = millis();
-  const char* commands[] = {PID_COOLANT_TEMP};
-  int numCommands = sizeof(commands) / sizeof(commands[0]);
-
-  if (currentMillis - lastCommandTime >= OBDQueryInterval / numCommands) {
-    if (commandIndex < numCommands) {
-      sendOBDCommand(commands[commandIndex]);
-      delay(40);
-      commandIndex++;
-    } else {
-      commandIndex = 0;
-    }
-    lastCommandTime = currentMillis;
-  }
-}
-
 void handleOBDResponse() {
   String response = bufferSerialData(250, 100);  // Riempimento del buffer
+  Serial.println(response);
   parseOBDData(response);  // Parsing del buffer
 }
 
@@ -201,6 +199,11 @@ void parseOBDData(const String& response) {
   if (response.indexOf("4105") >= 0) {
     coolantTemp = parseCoolantTemp(response);
   }
+  /*
+   else if ((response.indexOf("V") >= 0) || ((response.indexOf("v") >= 0))) {
+    obdVoltage = parseOBDVoltage(response);
+  }
+  */ 
 }
 
 // Funzione per analizzare la temperatura del liquido di raffreddamento
@@ -211,6 +214,20 @@ float parseCoolantTemp(const String& response) {
   }
   return lastCoolantTemp;
 }
+
+// Funzione per analizzare la tensione OBD
+
+/*
+float parseOBDVoltage(const String& response) {
+  int indexV = response.indexOf('V');
+  if (indexV >= 0) {
+    String voltageStr = response.substring(0, indexV);
+    return voltageStr.toFloat();
+  }
+  return 0.0;
+}
+
+*/
 
 bool ELMinit() {
   String response;
@@ -253,6 +270,7 @@ bool ELMinit() {
     display.display();
     return false;
   }
+  
   return true;
 }
 
